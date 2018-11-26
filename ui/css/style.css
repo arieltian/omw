@@ -1,0 +1,91 @@
+#sidebar-container {
+    position: fixed;
+
+    height: 100%;
+    width: 400px;
+
+    background-color: white;
+    -webkit-box-shadow: 8px 0 6px -6px silver;
+
+    /* Place searchbox over map */
+    z-index: 1;
+
+}
+
+#searchbox-container {
+    height: 150px;
+    width: 100%;
+    padding-top: 50px;
+    background-color: #30d5c8;
+}
+
+.searchbox {
+    height: 30px;
+    width: 300px;
+    margin-left: 40px;
+    margin-bottom: 10px;
+
+    border-style: none none solid none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.5);
+
+
+    background-color: inherit;
+    color:white;
+}
+
+.route-container {
+    height: 100px;
+    width: 100%;
+    display: none;
+    border-style: none none solid none;
+    border-color: silver;
+    border-width: 1px;
+}
+
+.route-name {
+    margin-top: 20px;
+    margin-left: 40px;
+    float: left;
+}
+.route-details {
+    margin-top: 20px;
+    width: 20%;
+    float: right;
+    color: silver;
+}
+
+input:focus {
+    outline: none;
+}
+
+::placeholder { /* Chrome, Firefox, Opera, Safari 10.1+ */
+    color: rgba(255, 255, 255, 0.5);
+    opacity: 1; /* Firefox */
+}
+
+:-ms-input-placeholder { /* Internet Explorer 10-11 */
+    color: rgba(255, 255, 255, 0.5);
+}
+
+::-ms-input-placeholder { /* Microsoft Edge */
+    color: rgba(255, 255, 255, 0.5);
+}
+
+
+/* Always set the map height explicitly to define the size of the div
+ * element that contains the map. */
+#map {
+    height: 100%;
+    margin-left: 300px;
+    top: 0px;
+    z-index: 0;
+}
+
+/* Optional: Makes the sample page fill the window. */
+html, body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 14px;
+}
