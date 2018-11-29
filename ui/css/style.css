@@ -13,10 +13,11 @@
 }
 
 #searchbox-container {
-    height: 150px;
     width: 100%;
     padding-top: 50px;
+    padding-bottom: 50px;
     background-color: #30d5c8;
+    color:white;
 }
 
 .searchbox {
@@ -24,13 +25,27 @@
     width: 300px;
     margin-left: 40px;
     margin-bottom: 10px;
+}
 
-    border-style: none none solid none;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.5);
+#omw-container {
+    margin-top: 50px;
+    margin-left: 40px;
+}
 
+.words-left, .words-right {
+    float: left;
+}
+.words-left {
+    padding-right: 10px;
+}
+.words-right {
+    padding-left: 10px;
+}
 
-    background-color: inherit;
-    color:white;
+.gas {
+    float:left;
+    width: 30px;
+    text-align: right;
 }
 
 .route-container {
@@ -56,6 +71,13 @@
 
 input:focus {
     outline: none;
+}
+input {
+    border-style: none none solid none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.5);
+
+    background-color: inherit;
+    color: white
 }
 
 ::placeholder { /* Chrome, Firefox, Opera, Safari 10.1+ */
