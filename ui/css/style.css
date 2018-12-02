@@ -48,6 +48,10 @@
     text-align: right;
 }
 
+#errors {
+    display: none;
+}
+
 .route-container {
     height: 100px;
     width: 100%;
