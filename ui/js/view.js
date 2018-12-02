@@ -1,9 +1,10 @@
 var Constants = require('./constants.js');
+var DistanceCalculator = require('./distance_calculator.js');
 
 class View {
     showSelections(selections) {
         var containerDiv, nameDiv, durationDiv, distanceDiv;
-        var route, name, duration, distance;
+        var route, name, duration, distance, durationSecs, distanceMeters;
         var routes = selections.routes;
         for (var i = 0; i < Constants.MAX_ROUTES; i++) {
             if (routes.length > i) {
@@ -20,9 +21,17 @@ class View {
                     name = "Alternative route";
                 }
 
-                // legs must contain exactly one element
-                distance = route.legs[0].distance.text;
-                duration = route.legs[0].duration.text;
+                distanceMeters = 0;
+                durationSecs = 0;
+                var legs = route.legs;
+                for(var j = 0; j < legs.length; j++) {
+                    var leg = legs[j];
+                    if (leg.distance) { distanceMeters += leg.distance.value; }
+                    if (leg.duration) { durationSecs += leg.duration.value; }
+                }
+
+                distance = DistanceCalculator.distanceString(distanceMeters);
+                duration = DistanceCalculator.durationString(durationSecs);
 
                 $(nameDiv).html(name);
                 $(durationDiv).html(duration);

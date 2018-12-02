@@ -33,6 +33,34 @@ class Controller {
         return prevLocation;
     }
 
+    _maybeRoute() {
+        var waypoints = [];
+        if (this.model.from && this.model.to) {
+            for (var i = 0; i < this.model.omw.length; i++) {
+                waypoints.push({
+                    location: this.model.omw[i],
+                    stopover: true
+                });
+            };
+            var request = {
+                origin: this.model.from,
+                destination: this.model.to,
+                waypoints: waypoints,
+                travelMode: google.maps.TravelMode.DRIVING,
+                provideRouteAlternatives: true,
+                optimizeWaypoints: true
+            };
+            this.directionsService.route(request, (results, status) => {
+                if (status == google.maps.DirectionsStatus.OK) {
+                    this.model.selections = results;
+                } else {
+                    console.log('controller: status is: ' + status);
+                    // CR atian: log error
+                }
+            });
+        }
+    }
+
     _findPlace(omw, milesIn) {
         var query;
         switch(omw) {
@@ -51,42 +79,15 @@ class Controller {
                 };
         this.placesService.findPlaceFromQuery(request, (results, status) => {
             if (status == google.maps.places.PlacesServiceStatus.OK) {
-                if (results.length > 0) {
-                    // CR atian: maybe do something a little smarter
-                    var result = results[0];
-                    if (result.geometry) {
-                        var omw = result.geometry.location;
-                        this.model.addOmw(omw);
-                        alert('omw: ' + result.name);
-                    } else {
-                        // CR atian: log error
-                    }
-                } else {
-                    // CR atian: log error
-                }
+                this.model.addOmw(results);
+                this._maybeRoute();
             } else {
+                console.log('controller: status not ok');
                 // CR atian: log error
             }
         });
     }
 
-    _maybeRoute() {
-        if (this.model.from && this.model.to && !this.model.selections) {
-            var request = {
-                origin: this.model.from,
-                destination: this.model.to,
-                travelMode: google.maps.TravelMode.DRIVING,
-                provideRouteAlternatives: true
-            };
-            this.directionsService.route(request, (results, status) => {
-                if (status == google.maps.DirectionsStatus.OK) {
-                    this.model.selections = results;
-                } else {
-                    // CR atian: log error
-                }
-            });
-        }
-    }
 
     _render() {
         this.directionsRenderer.setDirections(this.model.selections);

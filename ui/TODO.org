@@ -1,7 +1,6 @@
-1. Alternative routes - done
-2. Route distance and duration - done
-3. Find a gas station x miles from point A (any direction)
-4. Filter it down to gas stations on the way
-5. Render route with gas station
-6. Extend to other categories (i.e. fast food)
-7. Improve style
+* Allow miles to be entered before routes
+* Show multiple options for gas
+** Label options by gas station name
+* Error handling
+** Log developer errors
+** Display user errors

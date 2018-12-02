@@ -84,6 +84,35 @@ class Controller {
         return prevLocation;
     }
 
+    _maybeRoute() {
+        var waypoints = [];
+        if (this.model.from && this.model.to) {
+            for (var i = 0; i < this.model.omw.length; i++) {
+                waypoints.push({
+                    location: this.model.omw[i],
+                    stopover: true
+                });
+                console.log('waypoints added: ' + this.model.omw[i]);
+            };
+            var request = {
+                origin: this.model.from,
+                destination: this.model.to,
+                waypoints: waypoints,
+                travelMode: google.maps.TravelMode.DRIVING,
+                provideRouteAlternatives: true,
+                optimizeWaypoints: true
+            };
+            this.directionsService.route(request, (results, status) => {
+                if (status == google.maps.DirectionsStatus.OK) {
+                    this.model.selections = results;
+                } else {
+                    console.log('controller: status is: ' + status);
+                    // CR atian: log error
+                }
+            });
+        }
+    }
+
     _findPlace(omw, milesIn) {
         var query;
         switch(omw) {
@@ -102,42 +131,15 @@ class Controller {
                 };
         this.placesService.findPlaceFromQuery(request, (results, status) => {
             if (status == google.maps.places.PlacesServiceStatus.OK) {
-                if (results.length > 0) {
-                    // CR atian: maybe do something a little smarter
-                    var result = results[0];
-                    if (result.geometry) {
-                        var omw = result.geometry.location;
-                        this.model.addOmw(omw);
-                        alert('omw: ' + result.name);
-                    } else {
-                        // CR atian: log error
-                    }
-                } else {
-                    // CR atian: log error
-                }
+                this.model.addOmw(results);
+                this._maybeRoute();
             } else {
+                console.log('controller: status not ok');
                 // CR atian: log error
             }
         });
     }
 
-    _maybeRoute() {
-        if (this.model.from && this.model.to && !this.model.selections) {
-            var request = {
-                origin: this.model.from,
-                destination: this.model.to,
-                travelMode: google.maps.TravelMode.DRIVING,
-                provideRouteAlternatives: true
-            };
-            this.directionsService.route(request, (results, status) => {
-                if (status == google.maps.DirectionsStatus.OK) {
-                    this.model.selections = results;
-                } else {
-                    // CR atian: log error
-                }
-            });
-        }
-    }
 
     _render() {
         this.directionsRenderer.setDirections(this.model.selections);
@@ -203,6 +205,7 @@ module.exports = Controller;
 },{"./constants.js":1,"./distance_calculator.js":3,"./model.js":5}],3:[function(require,module,exports){
 const EARTH_RADIUS_METERS = 6371000;
 const METERS_TO_MILES = 0.00062137;
+const SECONDS_TO_MINUTES = 0.01666666;
 
 function radians(degrees) {
     return degrees * (Math.PI / 180);
@@ -228,8 +231,21 @@ function milesBetween(p1, p2) {
     return (EARTH_RADIUS_METERS * c) * METERS_TO_MILES;
 }
 
+function distanceString(meters) {
+    var miles = METERS_TO_MILES * meters;
+    return (miles).toFixed(1) + ' mi';
+}
+
+// CR atian: rename this module
+function durationString(seconds) {
+    var minutes = SECONDS_TO_MINUTES * seconds;
+    return Math.round(minutes) + ' mins';
+}
+
 module.exports = {
-    milesBetween: milesBetween
+    milesBetween: milesBetween,
+    distanceString: distanceString,
+    durationString: durationString
 };
 
 },{}],4:[function(require,module,exports){
@@ -245,12 +261,13 @@ var View = require('./view.js');
 
 class Model {
     _toLatLng(places) {
-        if (places.length == 1) {
+        if (places.length > 0) {
             var place = places[0];
             if (place.geometry) {
                 return place.geometry.location;
             }
         }
+        console.log('places contains no results');
         // CR atian: log error
         return null;
     }
@@ -276,8 +293,8 @@ class Model {
         return this._selections;
     }
 
-    addOmw(location) {
-        this.omw.push(location);
+    addOmw(places) {
+        this.omw.push(this._toLatLng(places));
     }
 
     constructor() {
@@ -290,11 +307,12 @@ module.exports = Model;
 
 },{"./constants.js":1,"./view.js":6}],6:[function(require,module,exports){
 var Constants = require('./constants.js');
+var DistanceCalculator = require('./distance_calculator.js');
 
 class View {
     showSelections(selections) {
         var containerDiv, nameDiv, durationDiv, distanceDiv;
-        var route, name, duration, distance;
+        var route, name, duration, distance, durationSecs, distanceMeters;
         var routes = selections.routes;
         for (var i = 0; i < Constants.MAX_ROUTES; i++) {
             if (routes.length > i) {
@@ -311,9 +329,17 @@ class View {
                     name = "Alternative route";
                 }
 
-                // legs must contain exactly one element
-                distance = route.legs[0].distance.text;
-                duration = route.legs[0].duration.text;
+                distanceMeters = 0;
+                durationSecs = 0;
+                var legs = route.legs;
+                for(var j = 0; j < legs.length; j++) {
+                    var leg = legs[j];
+                    if (leg.distance) { distanceMeters += leg.distance.value; }
+                    if (leg.duration) { durationSecs += leg.duration.value; }
+                }
+
+                distance = DistanceCalculator.distanceString(distanceMeters);
+                duration = DistanceCalculator.durationString(durationSecs);
 
                 $(nameDiv).html(name);
                 $(durationDiv).html(duration);
@@ -331,4 +357,4 @@ class View {
 
 module.exports = View;
 
-},{"./constants.js":1}]},{},[4]);
+},{"./constants.js":1,"./distance_calculator.js":3}]},{},[4]);

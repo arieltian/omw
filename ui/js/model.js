@@ -3,12 +3,13 @@ var View = require('./view.js');
 
 class Model {
     _toLatLng(places) {
-        if (places.length == 1) {
+        if (places.length > 0) {
             var place = places[0];
             if (place.geometry) {
                 return place.geometry.location;
             }
         }
+        console.log('places contains no results');
         // CR atian: log error
         return null;
     }
@@ -34,8 +35,8 @@ class Model {
         return this._selections;
     }
 
-    addOmw(location) {
-        this.omw.push(location);
+    addOmw(places) {
+        this.omw.push(this._toLatLng(places));
     }
 
     constructor() {
