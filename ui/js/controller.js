@@ -1,69 +1,43 @@
+var Common = require('./common.js');
 var Constants = require('./constants.js');
 var DistanceCalculator = require('./distance_calculator.js');
 var Model = require('./model.js');
 
 class Controller {
-    renderDirections(selections, selected) {
-        this.directionsRenderer.setDirections(selections);
-        this.directionsRenderer.setRouteIndex(selected);
-    }
-
     _pointOnPath(milesIn) {
         var milesSoFar = 0;
-        var prevLocation,
-            path;
-        var selected = this.model.selected;
-        if (selected != null) {
-            path = this.model.selections.routes[selected].overview_path;
+        var prevLocation;
+        var path = this.model.path;
+        if (path.length > 0) {
+            for (var location of path) {
+                if (prevLocation && prevLocation != location) {
+                    var distance = DistanceCalculator.milesBetween(prevLocation, location);
+                    if (milesSoFar + distance > milesIn) {
+                        return prevLocation;
+                    }
+                    milesSoFar += distance;
+                }
+                prevLocation = location;
+            };
+            // CR atian: log error if milesIn is greater than total distance
+            return prevLocation;
         } else {
-            // CR atian: handle this case
             return null;
         }
-        for (var location of path) {
-            if (prevLocation && prevLocation != location) {
-                var distance = DistanceCalculator.milesBetween(prevLocation, location);
-                if (milesSoFar + distance > milesIn) {
-                    return prevLocation;
-                }
-                milesSoFar += distance;
-            }
-            prevLocation = location;
-        };
-        // CR atian: log error if milesIn is greater than total distance
-        return prevLocation;
     }
 
-    _maybeRoute() {
-        var waypoints = [];
-        if (this.model.from && this.model.to) {
-            for (var i = 0; i < this.model.omw.length; i++) {
-                waypoints.push({
-                    location: this.model.omw[i],
-                    stopover: true
-                });
-            };
-            var request = {
-                origin: this.model.from,
-                destination: this.model.to,
-                waypoints: waypoints,
-                travelMode: google.maps.TravelMode.DRIVING,
-                provideRouteAlternatives: true,
-                optimizeWaypoints: true
-            };
-            this.directionsService.route(request, (results, status) => {
-                if (status == google.maps.DirectionsStatus.OK) {
-                    this.model.selections = results;
-                } else {
-                    console.log('controller: status is: ' + status);
-                    // CR atian: log error
-                }
-            });
-        }
+    _render() {
+        this.directionsRenderer.setDirections(this.model.selections);
+        this.directionsRenderer.setRouteIndex(this.model.selected);
     }
 
-    _findPlace(omw, milesIn) {
+    _unrender() {
+        this.directionsRenderer.setRouteIndex(-1);
+    }
+
+    _findPlace(omw, callback) {
         var query;
-        switch(omw) {
+        switch(omw.type) {
         case Constants.Omw.GAS:
             query='gas';
             break;
@@ -71,7 +45,7 @@ class Controller {
             return;
             // CR atian: log error
         }
-        var near = this._pointOnPath(milesIn);
+        var near = this._pointOnPath(omw.milesIn);
         var request =
                 { locationBias: near,
                   query: query,
@@ -79,8 +53,7 @@ class Controller {
                 };
         this.placesService.findPlaceFromQuery(request, (results, status) => {
             if (status == google.maps.places.PlacesServiceStatus.OK) {
-                this.model.addOmw(results);
-                this._maybeRoute();
+                callback(results);
             } else {
                 console.log('controller: status not ok');
                 // CR atian: log error
@@ -88,10 +61,65 @@ class Controller {
         });
     }
 
+    _route() {
+        var waypoints = [];
+        this._unrender();
+        this.model.selected = null;
+        for (var i = 0; i < this.model.omw.length; i++) {
+            waypoints.push({
+                location: this.model.omw[i].cachedLocation,
+                stopover: true
+            });
+        }
+        var request = {
+            origin: this.model.from,
+            destination: this.model.to,
+            waypoints: waypoints,
+            travelMode: google.maps.TravelMode.DRIVING,
+            provideRouteAlternatives: true,
+            optimizeWaypoints: true
+        };
+        this.directionsService.route(request, (results, status) => {
+            if (status == google.maps.DirectionsStatus.OK) {
+                this.model.selections = results;
+            } else {
+                console.log('controller: status is: ' + status);
+                // CR atian: log error
+            }
+        });
+    }
 
-    _render() {
-        this.directionsRenderer.setDirections(this.model.selections);
-        this.directionsRenderer.setRouteIndex(this.model.selected);
+    _routeIfCachedOmwLocations() {
+        if (this.model.omw.every((omw) => omw.cachedLocation != null)) {
+            this._route();
+            return true;
+        }
+        return false;
+    }
+
+    _routeIfEndpointsExist() {
+        if (this.model.from && this.model.to) {
+            if (!this._routeIfCachedOmwLocations()) {
+                // User asked for omw before selecting a route. Let's just
+                // auto-select the first route for them.
+                if (this.model.selected == null) {
+                    this.model.selected = 0;
+                }
+                for (var i = 0; i < this.model.omw.length; i++) {
+                    const this_i = i;
+                    if (this.model.omw[this_i].cachedLocation == null) {
+                        this._findPlace(this.model.omw[i], (results) => {
+                            var location = Common.toLatLng(results);
+                            if (location == null) {
+                                console.log('how is location still null...');
+                            }
+                            this.model.addOmwLocation(this_i, location);
+                            this._routeIfCachedOmwLocations();
+                        });
+                    }
+                }
+            }
+        }
     }
 
     _initRouteListeners() {
@@ -112,12 +140,12 @@ class Controller {
 
         fromSearchBox.addListener('places_changed', () => {
             this.model.from = fromSearchBox.getPlaces();
-            this._maybeRoute();
+            this._routeIfEndpointsExist();
         });
 
         toSearchBox.addListener('places_changed', () => {
             this.model.to = toSearchBox.getPlaces();
-            this._maybeRoute();
+            this._routeIfEndpointsExist();
         });
     }
 
@@ -128,7 +156,8 @@ class Controller {
                 var keycode = (event.keyCode ? event.keyCode : event.which);
                 if(keycode == '13') { // We hit Enter
                     var milesIn = event.target.value;
-                    this._findPlace(Constants.Omw.GAS, milesIn);
+                    this.model.addOmw(Constants.Omw.GAS, milesIn);
+                    this._routeIfEndpointsExist();
                 }
             });
         }

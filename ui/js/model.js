@@ -1,24 +1,13 @@
+var Common = require('./common.js');
 var Constants = require('./constants.js');
 var View = require('./view.js');
 
 class Model {
-    _toLatLng(places) {
-        if (places.length > 0) {
-            var place = places[0];
-            if (place.geometry) {
-                return place.geometry.location;
-            }
-        }
-        console.log('places contains no results');
-        // CR atian: log error
-        return null;
-    }
-
     set from (places) {
-        this._from = this._toLatLng(places);
+        this._from = Common.toLatLng(places);
     }
     set to (places) {
-        this._to = this._toLatLng(places);
+        this._to = Common.toLatLng(places);
     }
     get from () {
         return this._from;
@@ -35,8 +24,31 @@ class Model {
         return this._selections;
     }
 
-    addOmw(places) {
-        this.omw.push(this._toLatLng(places));
+    get path () {
+        if (this._selections && this.selected != null) {
+            return this._selections.routes[this.selected].overview_path;
+        } else {
+            return [];
+        }
+    }
+
+    addOmw(type, milesIn) {
+        var omw = {
+            type: type,
+            milesIn: milesIn,
+            cachedLocation: null
+        };
+        this.omw.push(omw);
+    }
+
+    addOmwLocation(index, location) {
+        if (index < this.omw.length) {
+            var omw = this.omw[index];
+            omw.cachedLocation = location;
+        } else {
+            // CR atian: log dev error
+            console.log('cached omw location out of bounds');
+        }
     }
 
     constructor() {

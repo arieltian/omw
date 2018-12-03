@@ -1,4 +1,20 @@
 (function(){function r(e,n,t){function o(i,f){if(!n[i]){if(!e[i]){var c="function"==typeof require&&require;if(!f&&c)return c(i,!0);if(u)return u(i,!0);var a=new Error("Cannot find module '"+i+"'");throw a.code="MODULE_NOT_FOUND",a}var p=n[i]={exports:{}};e[i][0].call(p.exports,function(r){var n=e[i][1][r];return o(n||r)},p,p.exports,r,e,n,t)}return n[i].exports}for(var u="function"==typeof require&&require,i=0;i<t.length;i++)o(t[i]);return o}return r})()({1:[function(require,module,exports){
+function toLatLng(places) {
+    if (places.length > 0) {
+        var place = places[0];
+        if (place.geometry) {
+            return place.geometry.location;
+        }
+    }
+    // CR atian: log error
+    return null;
+}
+
+module.exports = {
+    toLatLng: toLatLng
+}
+
+},{}],2:[function(require,module,exports){
 const MAP_DIV = 'map';
 const MAP_OPTIONS = {
     // Nyc fidi
@@ -48,74 +64,47 @@ module.exports = {
     Omw: Omw
 };
 
-},{}],2:[function(require,module,exports){
+},{}],3:[function(require,module,exports){
+var Common = require('./common.js');
 var Constants = require('./constants.js');
 var DistanceCalculator = require('./distance_calculator.js');
 var Model = require('./model.js');
 
 class Controller {
-    renderDirections(selections, selected) {
-        this.directionsRenderer.setDirections(selections);
-        this.directionsRenderer.setRouteIndex(selected);
-    }
-
     _pointOnPath(milesIn) {
         var milesSoFar = 0;
-        var prevLocation,
-            path;
-        var selected = this.model.selected;
-        if (selected != null) {
-            path = this.model.selections.routes[selected].overview_path;
+        var prevLocation;
+        var path = this.model.path;
+        if (path.length > 0) {
+            for (var location of path) {
+                if (prevLocation && prevLocation != location) {
+                    var distance = DistanceCalculator.milesBetween(prevLocation, location);
+                    if (milesSoFar + distance > milesIn) {
+                        return prevLocation;
+                    }
+                    milesSoFar += distance;
+                }
+                prevLocation = location;
+            };
+            // CR atian: log error if milesIn is greater than total distance
+            return prevLocation;
         } else {
-            // CR atian: handle this case
             return null;
         }
-        for (var location of path) {
-            if (prevLocation && prevLocation != location) {
-                var distance = DistanceCalculator.milesBetween(prevLocation, location);
-                if (milesSoFar + distance > milesIn) {
-                    return prevLocation;
-                }
-                milesSoFar += distance;
-            }
-            prevLocation = location;
-        };
-        // CR atian: log error if milesIn is greater than total distance
-        return prevLocation;
     }
 
-    _maybeRoute() {
-        var waypoints = [];
-        if (this.model.from && this.model.to) {
-            for (var i = 0; i < this.model.omw.length; i++) {
-                waypoints.push({
-                    location: this.model.omw[i],
-                    stopover: true
-                });
-                console.log('waypoints added: ' + this.model.omw[i]);
-            };
-            var request = {
-                origin: this.model.from,
-                destination: this.model.to,
-                waypoints: waypoints,
-                travelMode: google.maps.TravelMode.DRIVING,
-                provideRouteAlternatives: true,
-                optimizeWaypoints: true
-            };
-            this.directionsService.route(request, (results, status) => {
-                if (status == google.maps.DirectionsStatus.OK) {
-                    this.model.selections = results;
-                } else {
-                    console.log('controller: status is: ' + status);
-                    // CR atian: log error
-                }
-            });
-        }
+    _render() {
+        this.directionsRenderer.setDirections(this.model.selections);
+        this.directionsRenderer.setRouteIndex(this.model.selected);
     }
 
-    _findPlace(omw, milesIn) {
+    _unrender() {
+        this.directionsRenderer.setRouteIndex(-1);
+    }
+
+    _findPlace(omw, callback) {
         var query;
-        switch(omw) {
+        switch(omw.type) {
         case Constants.Omw.GAS:
             query='gas';
             break;
@@ -123,7 +112,7 @@ class Controller {
             return;
             // CR atian: log error
         }
-        var near = this._pointOnPath(milesIn);
+        var near = this._pointOnPath(omw.milesIn);
         var request =
                 { locationBias: near,
                   query: query,
@@ -131,8 +120,7 @@ class Controller {
                 };
         this.placesService.findPlaceFromQuery(request, (results, status) => {
             if (status == google.maps.places.PlacesServiceStatus.OK) {
-                this.model.addOmw(results);
-                this._maybeRoute();
+                callback(results);
             } else {
                 console.log('controller: status not ok');
                 // CR atian: log error
@@ -140,10 +128,65 @@ class Controller {
         });
     }
 
+    _route() {
+        var waypoints = [];
+        this._unrender();
+        this.model.selected = null;
+        for (var i = 0; i < this.model.omw.length; i++) {
+            waypoints.push({
+                location: this.model.omw[i].cachedLocation,
+                stopover: true
+            });
+        }
+        var request = {
+            origin: this.model.from,
+            destination: this.model.to,
+            waypoints: waypoints,
+            travelMode: google.maps.TravelMode.DRIVING,
+            provideRouteAlternatives: true,
+            optimizeWaypoints: true
+        };
+        this.directionsService.route(request, (results, status) => {
+            if (status == google.maps.DirectionsStatus.OK) {
+                this.model.selections = results;
+            } else {
+                console.log('controller: status is: ' + status);
+                // CR atian: log error
+            }
+        });
+    }
 
-    _render() {
-        this.directionsRenderer.setDirections(this.model.selections);
-        this.directionsRenderer.setRouteIndex(this.model.selected);
+    _routeIfCachedOmwLocations() {
+        if (this.model.omw.every((omw) => omw.cachedLocation != null)) {
+            this._route();
+            return true;
+        }
+        return false;
+    }
+
+    _routeIfEndpointsExist() {
+        if (this.model.from && this.model.to) {
+            if (!this._routeIfCachedOmwLocations()) {
+                // User asked for omw before selecting a route. Let's just
+                // auto-select the first route for them.
+                if (this.model.selected == null) {
+                    this.model.selected = 0;
+                }
+                for (var i = 0; i < this.model.omw.length; i++) {
+                    const this_i = i;
+                    if (this.model.omw[this_i].cachedLocation == null) {
+                        this._findPlace(this.model.omw[i], (results) => {
+                            var location = Common.toLatLng(results);
+                            if (location == null) {
+                                console.log('how is location still null...');
+                            }
+                            this.model.addOmwLocation(this_i, location);
+                            this._routeIfCachedOmwLocations();
+                        });
+                    }
+                }
+            }
+        }
     }
 
     _initRouteListeners() {
@@ -164,12 +207,12 @@ class Controller {
 
         fromSearchBox.addListener('places_changed', () => {
             this.model.from = fromSearchBox.getPlaces();
-            this._maybeRoute();
+            this._routeIfEndpointsExist();
         });
 
         toSearchBox.addListener('places_changed', () => {
             this.model.to = toSearchBox.getPlaces();
-            this._maybeRoute();
+            this._routeIfEndpointsExist();
         });
     }
 
@@ -180,7 +223,8 @@ class Controller {
                 var keycode = (event.keyCode ? event.keyCode : event.which);
                 if(keycode == '13') { // We hit Enter
                     var milesIn = event.target.value;
-                    this._findPlace(Constants.Omw.GAS, milesIn);
+                    this.model.addOmw(Constants.Omw.GAS, milesIn);
+                    this._routeIfEndpointsExist();
                 }
             });
         }
@@ -202,7 +246,7 @@ class Controller {
 
 module.exports = Controller;
 
-},{"./constants.js":1,"./distance_calculator.js":3,"./model.js":5}],3:[function(require,module,exports){
+},{"./common.js":1,"./constants.js":2,"./distance_calculator.js":4,"./model.js":6}],4:[function(require,module,exports){
 const EARTH_RADIUS_METERS = 6371000;
 const METERS_TO_MILES = 0.00062137;
 const SECONDS_TO_MINUTES = 0.01666666;
@@ -248,35 +292,24 @@ module.exports = {
     durationString: durationString
 };
 
-},{}],4:[function(require,module,exports){
+},{}],5:[function(require,module,exports){
 var Controller = require('./controller.js');
 
 window.init = function() {
     var controller = new Controller();
 };
 
-},{"./controller.js":2}],5:[function(require,module,exports){
+},{"./controller.js":3}],6:[function(require,module,exports){
+var Common = require('./common.js');
 var Constants = require('./constants.js');
 var View = require('./view.js');
 
 class Model {
-    _toLatLng(places) {
-        if (places.length > 0) {
-            var place = places[0];
-            if (place.geometry) {
-                return place.geometry.location;
-            }
-        }
-        console.log('places contains no results');
-        // CR atian: log error
-        return null;
-    }
-
     set from (places) {
-        this._from = this._toLatLng(places);
+        this._from = Common.toLatLng(places);
     }
     set to (places) {
-        this._to = this._toLatLng(places);
+        this._to = Common.toLatLng(places);
     }
     get from () {
         return this._from;
@@ -293,8 +326,31 @@ class Model {
         return this._selections;
     }
 
-    addOmw(places) {
-        this.omw.push(this._toLatLng(places));
+    get path () {
+        if (this._selections && this.selected != null) {
+            return this._selections.routes[this.selected].overview_path;
+        } else {
+            return [];
+        }
+    }
+
+    addOmw(type, milesIn) {
+        var omw = {
+            type: type,
+            milesIn: milesIn,
+            cachedLocation: null
+        };
+        this.omw.push(omw);
+    }
+
+    addOmwLocation(index, location) {
+        if (index < this.omw.length) {
+            var omw = this.omw[index];
+            omw.cachedLocation = location;
+        } else {
+            // CR atian: log dev error
+            console.log('cached omw location out of bounds');
+        }
     }
 
     constructor() {
@@ -305,7 +361,7 @@ class Model {
 
 module.exports = Model;
 
-},{"./constants.js":1,"./view.js":6}],6:[function(require,module,exports){
+},{"./common.js":1,"./constants.js":2,"./view.js":7}],7:[function(require,module,exports){
 var Constants = require('./constants.js');
 var DistanceCalculator = require('./distance_calculator.js');
 
@@ -357,4 +413,4 @@ class View {
 
 module.exports = View;
 
-},{"./constants.js":1,"./distance_calculator.js":3}]},{},[4]);
+},{"./constants.js":2,"./distance_calculator.js":4}]},{},[5]);

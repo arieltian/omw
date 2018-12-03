@@ -1,4 +1,5 @@
-* Allow miles to be entered before routes
+* Allow miles to be entered before routes - done
+* Fix case where omw is changed
 * Show multiple options for gas
 ** Label options by gas station name
 * Error handling
