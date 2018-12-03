@@ -67,7 +67,7 @@ module.exports = {
 },{}],3:[function(require,module,exports){
 var Common = require('./common.js');
 var Constants = require('./constants.js');
-var DistanceCalculator = require('./distance_calculator.js');
+var UnitCalculator = require('./unit_calculator.js');
 var Model = require('./model.js');
 
 class Controller {
@@ -78,7 +78,7 @@ class Controller {
         if (path.length > 0) {
             for (var location of path) {
                 if (prevLocation && prevLocation != location) {
-                    var distance = DistanceCalculator.milesBetween(prevLocation, location);
+                    var distance = UnitCalculator.milesBetween(prevLocation, location);
                     if (milesSoFar + distance > milesIn) {
                         return prevLocation;
                     }
@@ -133,10 +133,12 @@ class Controller {
         this._unrender();
         this.model.selected = null;
         for (var i = 0; i < this.model.omw.length; i++) {
-            waypoints.push({
-                location: this.model.omw[i].cachedLocation,
-                stopover: true
-            });
+            if (this.model.omw[i]) {
+                waypoints.push({
+                    location: this.model.omw[i].cachedLocation,
+                    stopover: true
+                });
+            }
         }
         var request = {
             origin: this.model.from,
@@ -157,7 +159,7 @@ class Controller {
     }
 
     _routeIfCachedOmwLocations() {
-        if (this.model.omw.every((omw) => omw.cachedLocation != null)) {
+        if (this.model.omw.every((omw) => (!omw) || (omw.cachedLocation != null))) {
             this._route();
             return true;
         }
@@ -174,12 +176,10 @@ class Controller {
                 }
                 for (var i = 0; i < this.model.omw.length; i++) {
                     const this_i = i;
-                    if (this.model.omw[this_i].cachedLocation == null) {
+                    var omw = this.model.omw[this_i];
+                    if (omw && omw.cachedLocation == null) {
                         this._findPlace(this.model.omw[i], (results) => {
                             var location = Common.toLatLng(results);
-                            if (location == null) {
-                                console.log('how is location still null...');
-                            }
                             this.model.addOmwLocation(this_i, location);
                             this._routeIfCachedOmwLocations();
                         });
@@ -218,12 +218,13 @@ class Controller {
 
     _initOmwListeners() {
         for (var i = 0; i < Constants.MAX_OMWS; i++) {
+            const this_i = i;
             var div = Constants.OMW_DIV(i);
             $(div).keypress((event) => {
                 var keycode = (event.keyCode ? event.keyCode : event.which);
                 if(keycode == '13') { // We hit Enter
                     var milesIn = event.target.value;
-                    this.model.addOmw(Constants.Omw.GAS, milesIn);
+                    this.model.setOmw(this_i, Constants.Omw.GAS, milesIn);
                     this._routeIfEndpointsExist();
                 }
             });
@@ -246,60 +247,14 @@ class Controller {
 
 module.exports = Controller;
 
-},{"./common.js":1,"./constants.js":2,"./distance_calculator.js":4,"./model.js":6}],4:[function(require,module,exports){
-const EARTH_RADIUS_METERS = 6371000;
-const METERS_TO_MILES = 0.00062137;
-const SECONDS_TO_MINUTES = 0.01666666;
-
-function radians(degrees) {
-    return degrees * (Math.PI / 180);
-}
-
-function milesBetween(p1, p2) {
-    var p1_lat = p1.lat();
-    var p1_lng = p1.lng();
-    var p2_lat = p2.lat();
-    var p2_lng = p2.lng();
-
-    var lat1 = radians(p1_lat);
-    var lat2 = radians(p2_lat);
-    var delta_lat = radians(p2_lat - p1_lat);
-    var delta_lng = radians(p2_lng - p1_lng);
-
-    var lat_partial = Math.sin(delta_lat/2);
-    var lng_partial = Math.sin(delta_lng/2);
-    var a = lat_partial * lat_partial +
-            Math.cos(lat1) * Math.cos(lat2) *
-            lng_partial * lng_partial;
-    var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-    return (EARTH_RADIUS_METERS * c) * METERS_TO_MILES;
-}
-
-function distanceString(meters) {
-    var miles = METERS_TO_MILES * meters;
-    return (miles).toFixed(1) + ' mi';
-}
-
-// CR atian: rename this module
-function durationString(seconds) {
-    var minutes = SECONDS_TO_MINUTES * seconds;
-    return Math.round(minutes) + ' mins';
-}
-
-module.exports = {
-    milesBetween: milesBetween,
-    distanceString: distanceString,
-    durationString: durationString
-};
-
-},{}],5:[function(require,module,exports){
+},{"./common.js":1,"./constants.js":2,"./model.js":5,"./unit_calculator.js":6}],4:[function(require,module,exports){
 var Controller = require('./controller.js');
 
 window.init = function() {
     var controller = new Controller();
 };
 
-},{"./controller.js":3}],6:[function(require,module,exports){
+},{"./controller.js":3}],5:[function(require,module,exports){
 var Common = require('./common.js');
 var Constants = require('./constants.js');
 var View = require('./view.js');
@@ -334,13 +289,13 @@ class Model {
         }
     }
 
-    addOmw(type, milesIn) {
+    setOmw(index, type, milesIn) {
         var omw = {
             type: type,
             milesIn: milesIn,
             cachedLocation: null
         };
-        this.omw.push(omw);
+        this.omw[index] = omw;
     }
 
     addOmwLocation(index, location) {
@@ -361,9 +316,90 @@ class Model {
 
 module.exports = Model;
 
-},{"./common.js":1,"./constants.js":2,"./view.js":7}],7:[function(require,module,exports){
+},{"./common.js":1,"./constants.js":2,"./view.js":7}],6:[function(require,module,exports){
+const EARTH_RADIUS_METERS = 6371000;
+const METERS_TO_MILES = 0.00062137;
+
+function radians(degrees) {
+    return degrees * (Math.PI / 180);
+}
+
+function milesBetween(p1, p2) {
+    var p1_lat = p1.lat();
+    var p1_lng = p1.lng();
+    var p2_lat = p2.lat();
+    var p2_lng = p2.lng();
+
+    var lat1 = radians(p1_lat);
+    var lat2 = radians(p2_lat);
+    var delta_lat = radians(p2_lat - p1_lat);
+    var delta_lng = radians(p2_lng - p1_lng);
+
+    var lat_partial = Math.sin(delta_lat/2);
+    var lng_partial = Math.sin(delta_lng/2);
+    var a = lat_partial * lat_partial +
+            Math.cos(lat1) * Math.cos(lat2) *
+            lng_partial * lng_partial;
+    var c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return (EARTH_RADIUS_METERS * c) * METERS_TO_MILES;
+}
+
+function distanceString(meters) {
+    var miles = METERS_TO_MILES * meters;
+    if (miles < 10) {
+        return (miles).toFixed(1) + ' mi';
+    } else {
+        return Math.round(miles) + ' mi';
+    }
+}
+
+function toText(value, unit) {
+    var valueRounded = Math.round(value);
+    if (valueRounded == 0) {
+        return "";
+    } else {
+        return valueRounded + ' ' + unit;
+    }
+}
+
+const MINUTES_MULT = 60;
+const HOURS_MULT = MINUTES_MULT * 60;
+const DAYS_MULT = HOURS_MULT * 24;
+
+function durationString(seconds) {
+    var minutes, hours, days;
+    if (seconds < MINUTES_MULT) {
+        return toText(1, 'min');
+    } else if (seconds < HOURS_MULT) {
+        minutes = seconds/MINUTES_MULT;
+        return toText(minutes, 'min');
+    } else if (seconds < DAYS_MULT) {
+        hours = seconds/HOURS_MULT;
+        minutes = (seconds % HOURS_MULT) / MINUTES_MULT;
+        return toText(hours, 'h')
+            +  ' '
+            +  toText(minutes, 'min');
+    } else {
+        days = seconds/DAYS_MULT;
+        hours = (seconds % DAYS_MULT) / HOURS_MULT;
+        minutes = (seconds % HOURS_MULT) / MINUTES_MULT;
+        return toText(days, 'd')
+            +  ' '
+            +  toText(hours, 'h')
+            +  ' '
+            +  toText(minutes, 'min');
+    }
+}
+
+module.exports = {
+    milesBetween: milesBetween,
+    distanceString: distanceString,
+    durationString: durationString
+};
+
+},{}],7:[function(require,module,exports){
 var Constants = require('./constants.js');
-var DistanceCalculator = require('./distance_calculator.js');
+var UnitCalculator = require('./unit_calculator.js');
 
 class View {
     showSelections(selections) {
@@ -394,8 +430,8 @@ class View {
                     if (leg.duration) { durationSecs += leg.duration.value; }
                 }
 
-                distance = DistanceCalculator.distanceString(distanceMeters);
-                duration = DistanceCalculator.durationString(durationSecs);
+                distance = UnitCalculator.distanceString(distanceMeters);
+                duration = UnitCalculator.durationString(durationSecs);
 
                 $(nameDiv).html(name);
                 $(durationDiv).html(duration);
@@ -413,4 +449,4 @@ class View {
 
 module.exports = View;
 
-},{"./constants.js":2,"./distance_calculator.js":4}]},{},[5]);
+},{"./constants.js":2,"./unit_calculator.js":6}]},{},[4]);

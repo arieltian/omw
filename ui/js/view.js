@@ -1,5 +1,5 @@
 var Constants = require('./constants.js');
-var DistanceCalculator = require('./distance_calculator.js');
+var UnitCalculator = require('./unit_calculator.js');
 
 class View {
     showSelections(selections) {
@@ -30,8 +30,8 @@ class View {
                     if (leg.duration) { durationSecs += leg.duration.value; }
                 }
 
-                distance = DistanceCalculator.distanceString(distanceMeters);
-                duration = DistanceCalculator.durationString(durationSecs);
+                distance = UnitCalculator.distanceString(distanceMeters);
+                duration = UnitCalculator.durationString(durationSecs);
 
                 $(nameDiv).html(name);
                 $(durationDiv).html(duration);

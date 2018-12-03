@@ -1,6 +1,6 @@
 var Common = require('./common.js');
 var Constants = require('./constants.js');
-var DistanceCalculator = require('./distance_calculator.js');
+var UnitCalculator = require('./unit_calculator.js');
 var Model = require('./model.js');
 
 class Controller {
@@ -11,7 +11,7 @@ class Controller {
         if (path.length > 0) {
             for (var location of path) {
                 if (prevLocation && prevLocation != location) {
-                    var distance = DistanceCalculator.milesBetween(prevLocation, location);
+                    var distance = UnitCalculator.milesBetween(prevLocation, location);
                     if (milesSoFar + distance > milesIn) {
                         return prevLocation;
                     }
@@ -66,10 +66,12 @@ class Controller {
         this._unrender();
         this.model.selected = null;
         for (var i = 0; i < this.model.omw.length; i++) {
-            waypoints.push({
-                location: this.model.omw[i].cachedLocation,
-                stopover: true
-            });
+            if (this.model.omw[i]) {
+                waypoints.push({
+                    location: this.model.omw[i].cachedLocation,
+                    stopover: true
+                });
+            }
         }
         var request = {
             origin: this.model.from,
@@ -90,7 +92,7 @@ class Controller {
     }
 
     _routeIfCachedOmwLocations() {
-        if (this.model.omw.every((omw) => omw.cachedLocation != null)) {
+        if (this.model.omw.every((omw) => (!omw) || (omw.cachedLocation != null))) {
             this._route();
             return true;
         }
@@ -107,12 +109,10 @@ class Controller {
                 }
                 for (var i = 0; i < this.model.omw.length; i++) {
                     const this_i = i;
-                    if (this.model.omw[this_i].cachedLocation == null) {
+                    var omw = this.model.omw[this_i];
+                    if (omw && omw.cachedLocation == null) {
                         this._findPlace(this.model.omw[i], (results) => {
                             var location = Common.toLatLng(results);
-                            if (location == null) {
-                                console.log('how is location still null...');
-                            }
                             this.model.addOmwLocation(this_i, location);
                             this._routeIfCachedOmwLocations();
                         });
@@ -151,12 +151,13 @@ class Controller {
 
     _initOmwListeners() {
         for (var i = 0; i < Constants.MAX_OMWS; i++) {
+            const this_i = i;
             var div = Constants.OMW_DIV(i);
             $(div).keypress((event) => {
                 var keycode = (event.keyCode ? event.keyCode : event.which);
                 if(keycode == '13') { // We hit Enter
                     var milesIn = event.target.value;
-                    this.model.addOmw(Constants.Omw.GAS, milesIn);
+                    this.model.setOmw(this_i, Constants.Omw.GAS, milesIn);
                     this._routeIfEndpointsExist();
                 }
             });

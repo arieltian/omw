@@ -32,13 +32,13 @@ class Model {
         }
     }
 
-    addOmw(type, milesIn) {
+    setOmw(index, type, milesIn) {
         var omw = {
             type: type,
             milesIn: milesIn,
             cachedLocation: null
         };
-        this.omw.push(omw);
+        this.omw[index] = omw;
     }
 
     addOmwLocation(index, location) {

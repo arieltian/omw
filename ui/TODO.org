@@ -1,5 +1,6 @@
 * Allow miles to be entered before routes - done
-* Fix case where omw is changed
+* Fix case where omw is changed - done
+* Fix distance and duration string - done
 * Show multiple options for gas
 ** Label options by gas station name
 * Error handling
