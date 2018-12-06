@@ -24,8 +24,14 @@ function ROUTE_DISTANCE_DIV(i) {
 }
 
 const MAX_OMWS = 1;
+function OMW_CONTAINER(i) {
+    return "#omw-container-" + (i+1);
+}
 function OMW_DIV(i) {
     return "#gas-" + (i+1);
+}
+function BUTTON_DIV(i) {
+    return "#button-" + (i+1);
 }
 
 var Omw = {
@@ -43,6 +49,8 @@ module.exports = {
     ROUTE_DURATION_DIV: ROUTE_DURATION_DIV,
     ROUTE_DISTANCE_DIV: ROUTE_DISTANCE_DIV,
     MAX_OMWS: MAX_OMWS,
+    OMW_CONTAINER: OMW_CONTAINER,
     OMW_DIV: OMW_DIV,
+    BUTTON_DIV: BUTTON_DIV,
     Omw: Omw
 };

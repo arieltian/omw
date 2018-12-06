@@ -36,14 +36,16 @@ class Model {
         var omw = {
             type: type,
             milesIn: milesIn,
+            cachedName: null,
             cachedLocation: null
         };
         this.omw[index] = omw;
     }
 
-    addOmwLocation(index, location) {
+    addOmwInfo(index, name, location) {
         if (index < this.omw.length) {
             var omw = this.omw[index];
+            omw.cachedName = name;
             omw.cachedLocation = location;
         } else {
             // CR atian: log dev error

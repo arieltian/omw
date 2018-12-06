@@ -41,8 +41,14 @@ function ROUTE_DISTANCE_DIV(i) {
 }
 
 const MAX_OMWS = 1;
+function OMW_CONTAINER(i) {
+    return "#omw-container-" + (i+1);
+}
 function OMW_DIV(i) {
     return "#gas-" + (i+1);
+}
+function BUTTON_DIV(i) {
+    return "#button-" + (i+1);
 }
 
 var Omw = {
@@ -60,7 +66,9 @@ module.exports = {
     ROUTE_DURATION_DIV: ROUTE_DURATION_DIV,
     ROUTE_DISTANCE_DIV: ROUTE_DISTANCE_DIV,
     MAX_OMWS: MAX_OMWS,
+    OMW_CONTAINER: OMW_CONTAINER,
     OMW_DIV: OMW_DIV,
+    BUTTON_DIV: BUTTON_DIV,
     Omw: Omw
 };
 
@@ -219,14 +227,19 @@ class Controller {
     _initOmwListeners() {
         for (var i = 0; i < Constants.MAX_OMWS; i++) {
             const this_i = i;
-            var div = Constants.OMW_DIV(i);
-            $(div).keypress((event) => {
+            var omwDiv = Constants.OMW_DIV(i);
+            $(omwDiv).keypress((event) => {
                 var keycode = (event.keyCode ? event.keyCode : event.which);
                 if(keycode == '13') { // We hit Enter
                     var milesIn = event.target.value;
                     this.model.setOmw(this_i, Constants.Omw.GAS, milesIn);
                     this._routeIfEndpointsExist();
                 }
+            });
+            var buttonDiv = Constants.BUTTON_DIV(i);
+            $(buttonDiv).click(() => {
+                var nextDiv = Constants.OMW_CONTAINER(this_i+1);
+                $(nextDiv).show();
             });
         }
     }

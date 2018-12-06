@@ -113,7 +113,8 @@ class Controller {
                     if (omw && omw.cachedLocation == null) {
                         this._findPlace(this.model.omw[i], (results) => {
                             var location = Common.toLatLng(results);
-                            this.model.addOmwLocation(this_i, location);
+                            var name = Common.toName(results);
+                            this.model.addOmwInfo(this_i, name, location);
                             this._routeIfCachedOmwLocations();
                         });
                     }
@@ -152,14 +153,19 @@ class Controller {
     _initOmwListeners() {
         for (var i = 0; i < Constants.MAX_OMWS; i++) {
             const this_i = i;
-            var div = Constants.OMW_DIV(i);
-            $(div).keypress((event) => {
+            var omwDiv = Constants.OMW_DIV(i);
+            $(omwDiv).keypress((event) => {
                 var keycode = (event.keyCode ? event.keyCode : event.which);
                 if(keycode == '13') { // We hit Enter
                     var milesIn = event.target.value;
                     this.model.setOmw(this_i, Constants.Omw.GAS, milesIn);
                     this._routeIfEndpointsExist();
                 }
+            });
+            var buttonDiv = Constants.BUTTON_DIV(i);
+            $(buttonDiv).click(() => {
+                var nextDiv = Constants.OMW_CONTAINER(this_i+1);
+                $(nextDiv).show();
             });
         }
     }
