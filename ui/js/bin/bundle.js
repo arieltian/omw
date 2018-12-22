@@ -10,7 +10,17 @@ function toLatLng(places) {
     return null;
 }
 
+function toName(places) {
+    if (places.length > 0) {
+        var place = places[0];
+        return place.name;
+    }
+    // CR atian: log error
+    return null;
+}
+
 module.exports = {
+    toName: toName,
     toLatLng: toLatLng
 }
 
@@ -40,7 +50,7 @@ function ROUTE_DISTANCE_DIV(i) {
     return "#route-" + (i+1) + "-distance";
 }
 
-const MAX_OMWS = 1;
+const MAX_OMWS = 3;
 function OMW_CONTAINER(i) {
     return "#omw-container-" + (i+1);
 }
@@ -78,7 +88,7 @@ var Constants = require('./constants.js');
 var UnitCalculator = require('./unit_calculator.js');
 var Model = require('./model.js');
 
-class Controller {
+class Omw {
     _pointOnPath(milesIn) {
         var milesSoFar = 0;
         var prevLocation;
@@ -101,20 +111,47 @@ class Controller {
         }
     }
 
-    _render() {
-        this.directionsRenderer.setDirections(this.model.selections);
-        this.directionsRenderer.setRouteIndex(this.model.selected);
+    _sortByDistance(resultsLong) {
+        var results = resultsLong.slice(0, 3);
+        for(var i = 0; i < results.length; i++) {
+            var result = results[i];
+            if (result.geometry && result.geometry.location) {
+                var location = result.geometry.location;
+                console.log('potential location ' + location);
+                var request = {
+                    origin: this.model.from,
+                    destination: location,
+                    travelMode: google.maps.TravelMode.DRIVING,
+                    provideRouteAlternatives: false
+                };
+                this.directionsService.route(request, (routeResults, status) => {
+                    if (status == google.maps.DirectionsStatus.OK) {
+                        // CR atian: do something smarter
+                        var distance = routeResults.routes[0].legs[0].distance.value;
+                        result.distance = distance;
+                    } else {
+                        console.log('controller: status is: ' + status);
+                        // CR atian: log error
+                    }
+                });
+            }
+        }
+
+        results.sort((r1, r2) => {
+            if (!r1.distance) { return 1; }
+            if (!r2.distance) { return -1; }
+            return r1.distance - r2.distance;
+        });
+        var distances = results.map((r) => {return r.distance;});
+        console.log('distances: ' + distances);
+
     }
 
-    _unrender() {
-        this.directionsRenderer.setRouteIndex(-1);
-    }
-
-    _findPlace(omw, callback) {
-        var query;
+    _find(omw, callback) {
+        var type;
         switch(omw.type) {
         case Constants.Omw.GAS:
-            query='gas';
+            type='gas_station';
             break;
         default:
             return;
@@ -122,18 +159,63 @@ class Controller {
         }
         var near = this._pointOnPath(omw.milesIn);
         var request =
-                { locationBias: near,
-                  query: query,
+                { location: near,
+                  rankBy: google.maps.places.RankBy.DISTANCE,
+                  type: type,
                   fields: [ 'name', 'geometry' ]
                 };
-        this.placesService.findPlaceFromQuery(request, (results, status) => {
+        this.placesService.nearbySearch(request, (results, status, pagination) => {
             if (status == google.maps.places.PlacesServiceStatus.OK) {
+                this._sortByDistance(results);
                 callback(results);
             } else {
                 console.log('controller: status not ok');
                 // CR atian: log error
             }
         });
+    }
+
+    _allLocationsAreCached() {
+        return (this.model.omw.every((omw) => (!omw) || (omw.cachedLocation != null)));
+    }
+
+    findLocations(callback) {
+        if (this._allLocationsAreCached()) {
+            callback();
+            return;
+        }
+
+        for (var i = 0; i < this.model.omw.length; i++) {
+            const this_i = i;
+            var omw = this.model.omw[this_i];
+            if (omw && omw.cachedLocation == null) {
+                this._find(this.model.omw[i], (results) => {
+                    var location = Common.toLatLng(results);
+                    var name = Common.toName(results);
+                    this.model.addOmwInfo(this_i, name, location);
+                    if (this._allLocationsAreCached()) {
+                        callback();
+                    }
+                });
+            }
+        }
+    }
+
+    constructor(map, model) {
+        this.directionsService = new google.maps.DirectionsService();
+        this.placesService = new google.maps.places.PlacesService(map);
+        this.model = model;
+    }
+}
+
+class Controller {
+    _render() {
+        this.directionsRenderer.setDirections(this.model.selections);
+        this.directionsRenderer.setRouteIndex(this.model.selected);
+    }
+
+    _unrender() {
+        this.directionsRenderer.setRouteIndex(-1);
     }
 
     _route() {
@@ -166,34 +248,16 @@ class Controller {
         });
     }
 
-    _routeIfCachedOmwLocations() {
-        if (this.model.omw.every((omw) => (!omw) || (omw.cachedLocation != null))) {
-            this._route();
-            return true;
-        }
-        return false;
-    }
-
     _routeIfEndpointsExist() {
         if (this.model.from && this.model.to) {
-            if (!this._routeIfCachedOmwLocations()) {
-                // User asked for omw before selecting a route. Let's just
-                // auto-select the first route for them.
-                if (this.model.selected == null) {
-                    this.model.selected = 0;
-                }
-                for (var i = 0; i < this.model.omw.length; i++) {
-                    const this_i = i;
-                    var omw = this.model.omw[this_i];
-                    if (omw && omw.cachedLocation == null) {
-                        this._findPlace(this.model.omw[i], (results) => {
-                            var location = Common.toLatLng(results);
-                            this.model.addOmwLocation(this_i, location);
-                            this._routeIfCachedOmwLocations();
-                        });
-                    }
-                }
+            // User asked for omw before selecting a route. Let's just
+            // auto-select the first route for them.
+            if (this.model.selected == null) {
+                this.model.selected = 0;
             }
+            this.omw.findLocations(() => {
+                this._route();
+            });
         }
     }
 
@@ -246,11 +310,11 @@ class Controller {
 
     constructor() {
         this.map = new google.maps.Map(document.getElementById(Constants.MAP_DIV), Constants.MAP_OPTIONS);
-        this.placesService = new google.maps.places.PlacesService(this.map);
         this.directionsService = new google.maps.DirectionsService();
         this.directionsRenderer = new google.maps.DirectionsRenderer();
         this.directionsRenderer.setMap(this.map);
         this.model = new Model();
+        this.omw = new Omw(this.map, this.model);
 
         this._initRouteListeners();
         this._initSearchBoxListeners();
@@ -306,14 +370,16 @@ class Model {
         var omw = {
             type: type,
             milesIn: milesIn,
+            cachedName: null,
             cachedLocation: null
         };
         this.omw[index] = omw;
     }
 
-    addOmwLocation(index, location) {
+    addOmwInfo(index, name, location) {
         if (index < this.omw.length) {
             var omw = this.omw[index];
+            omw.cachedName = name;
             omw.cachedLocation = location;
         } else {
             // CR atian: log dev error

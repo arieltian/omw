@@ -1,3 +1,13 @@
+// Distance
+const EARTH_RADIUS_METERS = 6371000;
+const METERS_TO_MILES = 0.00062137;
+
+// Time
+const SECS_IN_MIN = 60;
+const SECS_IN_HOUR = SECS_IN_MIN * 60;
+const SECS_IN_DAY = SECS_IN_HOUR * 24;
+
+// Div elements
 const MAP_DIV = 'map';
 const MAP_OPTIONS = {
     // Nyc fidi
@@ -23,7 +33,7 @@ function ROUTE_DISTANCE_DIV(i) {
     return "#route-" + (i+1) + "-distance";
 }
 
-const MAX_OMWS = 1;
+const MAX_OMWS = 3;
 function OMW_CONTAINER(i) {
     return "#omw-container-" + (i+1);
 }
@@ -39,6 +49,11 @@ var Omw = {
 };
 
 module.exports = {
+    EARTH_RADIUS_METERS: EARTH_RADIUS_METERS,
+    METERS_TO_MILES: METERS_TO_MILES,
+    SECS_IN_MIN: SECS_IN_MIN,
+    SECS_IN_HOUR: SECS_IN_HOUR,
+    SECS_IN_DAY: SECS_IN_DAY,
     MAP_DIV: MAP_DIV,
     MAP_OPTIONS: MAP_OPTIONS,
     FROM_SEARCH_BOX: FROM_SEARCH_BOX,

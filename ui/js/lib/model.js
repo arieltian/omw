@@ -1,13 +1,32 @@
-var Common = require('./common.js');
-var Constants = require('./constants.js');
-var View = require('./view.js');
+var Constants = require('../common/constants.js');
+var View = require('../view/view.js');
+
+function toLatLng(places) {
+    if (places.length > 0) {
+        var place = places[0];
+        if (place.geometry) {
+            return place.geometry.location;
+        }
+    }
+    // CR atian: log error
+    return null;
+}
+
+function toName(places) {
+    if (places.length > 0) {
+        var place = places[0];
+        return place.name;
+    }
+    // CR atian: log error
+    return null;
+}
 
 class Model {
     set from (places) {
-        this._from = Common.toLatLng(places);
+        this._from = toLatLng(places);
     }
     set to (places) {
-        this._to = Common.toLatLng(places);
+        this._to = toLatLng(places);
     }
     get from () {
         return this._from;
@@ -42,11 +61,11 @@ class Model {
         this.omw[index] = omw;
     }
 
-    addOmwInfo(index, name, location) {
+    addOmwInfo(index, places) {
         if (index < this.omw.length) {
             var omw = this.omw[index];
-            omw.cachedName = name;
-            omw.cachedLocation = location;
+            omw.cachedName = toName(places);
+            omw.cachedLocation = toLatLng(places);
         } else {
             // CR atian: log dev error
             console.log('cached omw location out of bounds');
