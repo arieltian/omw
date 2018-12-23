@@ -6,3 +6,4 @@
 * Error handling
 ** Log developer errors
 ** Display user errors
+* Traffic

@@ -5,8 +5,7 @@ var GoogleApi = require('./google_api.js');
 
 function Controller() {
     let model = new Model();
-    let map = new google.maps.Map(document.getElementById(Constants.MAP_DIV), Constants.MAP_OPTIONS);
-    let googleApi = new GoogleApi(map);
+    let googleApi = new GoogleApi();
     let omw = new Omw(model, googleApi);
 
     function initRouteListeners() {
@@ -34,13 +33,12 @@ function Controller() {
             origin: model.from,
             destination: model.to,
             waypoints: waypoints,
-            travelMode: google.maps.TravelMode.DRIVING,
+            travelMode: googleApi.MODE_DRIVING,
             provideRouteAlternatives: true,
             optimizeWaypoints: true
         };
-        var promise = googleApi.directions(request);
-        promise.then((results) => {
-            model.selections = results;
+        googleApi.directions(request).then((directions) => {
+            model.selections = directions;
         });
     }
 
@@ -58,16 +56,13 @@ function Controller() {
     }
 
     function initSearchBoxListeners() {
-        var fromSearchBox = new google.maps.places.SearchBox(document.getElementById(Constants.FROM_SEARCH_BOX));
-        var toSearchBox = new google.maps.places.SearchBox(document.getElementById(Constants.TO_SEARCH_BOX));
-
-        fromSearchBox.addListener('places_changed', () => {
-            model.from = fromSearchBox.getPlaces();
+        googleApi.onFromChanged((from) => {
+            model.from = from;
             routeIfEndpointsExist();
         });
 
-        toSearchBox.addListener('places_changed', () => {
-            model.to = toSearchBox.getPlaces();
+        googleApi.onToChanged((to) => {
+            model.to = to;
             routeIfEndpointsExist();
         });
     }
@@ -80,7 +75,8 @@ function Controller() {
                 var keycode = (event.keyCode ? event.keyCode : event.which);
                 if(keycode == '13') { // We hit Enter
                     var milesIn = event.target.value;
-                    model.setOmw(this_i, Constants.Omw.GAS, milesIn);
+                    var type = Constants.Omw.GAS;
+                    model.setOmw(this_i, type, milesIn);
                     routeIfEndpointsExist();
                 }
             });
