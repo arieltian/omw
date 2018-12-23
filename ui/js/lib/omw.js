@@ -1,6 +1,6 @@
-var Constants = require('../common/constants.js');
+var Constants = require('./constants.js');
 var Model = require('./model.js');
-var Google = require('./google.js');
+var GoogleApi = require('./google_api.js');
 
 class DistanceCalculator {
     static radians(degrees) {
@@ -28,16 +28,13 @@ class DistanceCalculator {
     }
 }
 
-function Omw(model, google) {
-    let model = model;
-    let google = google;
-
+function Omw(model, googleApi) {
     function pointOnPath(milesIn) {
         var milesSoFar = 0;
         var prevLocation;
         for (var location of model.path) {
             if (prevLocation && prevLocation != location) {
-                var distance = UnitCalculator.milesBetween(prevLocation, location);
+                var distance = DistanceCalculator.milesBetween(prevLocation, location);
                 if (milesSoFar + distance > milesIn) {
                     return prevLocation;
                 }
@@ -49,72 +46,67 @@ function Omw(model, google) {
         return prevLocation;
     }
 
-    function sortByDistance(resultsLong) {
-        var deferred;
+    function sortPlacesByDistanceFromOrigin(places) {
+        var deferred = $.Deferred();
         // CR atian: don't hardcode this length
-        var results = resultsLong.slice(0, 3);
+        places.splice(3);
         if (model.from == null) {
-            return Promise.resolve(results);
+            return Promise.resolve(places);
         }
-        var promises = results.map((result) => {
-            if (result.geometry && result.geometry.location) {
-                var location = result.geometry.location;
+        var promises = places.map((place) => {
+            if (place.geometry && place.geometry.location) {
+                var location = place.geometry.location;
                 var request = {
                     origin: model.from,
                     destination: location,
                     travelMode: google.maps.TravelMode.DRIVING,
                     provideRouteAlternatives: false
                 };
-                return google.directions(request);
+                return googleApi.directions(request).then((directions) => {
+                    var distance = directions.routes[0].legs[0].distance.value;
+                    place.distance = distance;
+                    return place;
+                });
             } else {
                 return Promise.reject('ERROR: geometry is null');
             }
         });
 
-        Promise.all(promises).then((results) => {
-            results.sort((r1, r2) => {
-                var r1Distance = r1.routes[0].legs[0].distance.value;
-                var r2Distance = r2.routes[0].legs[0].distance.value;
-                return r1Distance - r2Distance;
+        Promise.all(promises).then((places) => {
+            places.sort((p1, p2) => {
+                return p1.distance - p2.distance;
             });
-            deferred.resolve(results);
+            deferred.resolve(places);
         });
 
         return deferred.promise();
     }
 
-    function find(omw) {
-        var deferred, type;
-        switch(omw.type) {
-        case Constants.Omw.GAS:
-            type='gas_station';
-            break;
-        default:
-            return Promise.reject('ERROR: unknown type: ' + omw.type);
-        }
+    function addOneCachedLocation(omw) {
+        var type;
+        var deferred = $.Deferred();
         var near = pointOnPath(omw.milesIn);
         var request =
                 { location: near,
                   rankBy: google.maps.places.RankBy.DISTANCE,
-                  type: type,
+                  type: omw.type,
                   fields: [ 'name', 'geometry' ]
                 };
-        var promise = google.placesNearby(request);
-        promise.then((result) => {
-            var promise = sortByDistance(result);
-            promise.then((result) => {
-                deferred.resolve(result);
-            });
+        googleApi.placesNearby(request).then((places) => {
+            return sortPlacesByDistanceFromOrigin(places);
+        }).then((places) => {
+            deferred.resolve(places);
         });
+
         return deferred.promise();
     }
 
-    function findLocations() {
-        var deferred;
-        var promises = model.omw.map((owm, i) => {
+    function addCachedLocations() {
+        var deferred = $.Deferred();
+        var promises = model.omw.map((omw, i) => {
             if (omw.cachedLocation == null) {
-                var promise = find(omw) .then(results => {
-                    model.addOmwInfo(i, results);
+                var promise = addOneCachedLocation(omw).then(places => {
+                    model.addOmwInfo(i, places);
                 });
                 return promise;
             } else {
@@ -130,7 +122,7 @@ function Omw(model, google) {
     }
 
     return Object.freeze({
-        findLocations
+        addCachedLocations
     });
 }
 

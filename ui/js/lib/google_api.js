@@ -1,5 +1,4 @@
 function Google (map) {
-    let map = map;
     let directionsService = new google.maps.DirectionsService();
     let directionsRenderer = new google.maps.DirectionsRenderer();
     directionsRenderer.setMap(map);

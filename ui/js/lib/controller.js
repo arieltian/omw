@@ -1,13 +1,13 @@
-var Constants = require('../common/constants.js');
-var Model = require('../model/model.js');
+var Constants = require('./constants.js');
+var Model = require('./model.js');
 var Omw = require('./omw.js');
-var Google = require('./google.js');
+var GoogleApi = require('./google_api.js');
 
 function Controller() {
     let model = new Model();
     let map = new google.maps.Map(document.getElementById(Constants.MAP_DIV), Constants.MAP_OPTIONS);
-    let google = new Google(map);
-    let omw = new Omw(model, google);
+    let googleApi = new GoogleApi(map);
+    let omw = new Omw(model, googleApi);
 
     function initRouteListeners() {
         var containerDiv;
@@ -16,23 +16,20 @@ function Controller() {
             containerDiv = Constants.ROUTE_CONTAINER_DIV(i);
             $(containerDiv).click(() => {
                 model.selected = this_i;
-                google.render(model.selections, model.selected);
+                googleApi.render(model.selections, model.selected);
             });
         }
     }
 
     function route() {
-        var waypoints = [];
-        google.unrender();
+        googleApi.unrender();
         model.selected = null;
-        for (var i = 0; i < model.omw.length; i++) {
-            if (model.omw[i]) {
-                waypoints.push({
-                    location: model.omw[i].cachedLocation,
-                    stopover: true
-                });
-            }
-        }
+        var waypoints = model.omw.map((omw) => {
+            return {
+                location: omw.cachedLocation,
+                stopover: true
+            };
+        });
         var request = {
             origin: model.from,
             destination: model.to,
@@ -41,7 +38,7 @@ function Controller() {
             provideRouteAlternatives: true,
             optimizeWaypoints: true
         };
-        var promise = google.directions(request);
+        var promise = googleApi.directions(request);
         promise.then((results) => {
             model.selections = results;
         });
@@ -54,7 +51,7 @@ function Controller() {
             if (model.selected == null) {
                 model.selected = 0;
             }
-            omw.findLocations().then(() => {
+            omw.addCachedLocations().then(() => {
                 route();
             });
         }

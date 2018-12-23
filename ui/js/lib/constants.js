@@ -45,7 +45,7 @@ function BUTTON_DIV(i) {
 }
 
 var Omw = {
-    "GAS":1
+    GAS: "gas_station"
 };
 
 module.exports = {

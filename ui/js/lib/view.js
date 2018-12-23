@@ -1,4 +1,4 @@
-var Constants = require('../common/constants.js');
+var Constants = require('./constants.js');
 
 class Units {
     static distanceString(meters) {
@@ -23,19 +23,19 @@ class Units {
         var minutes, hours, days;
         if (seconds < Constants.SECS_IN_MIN) {
             return Units.toText(1, 'min');
-        } else if (seconds < Constants.SEC_IN_HOUR) {
+        } else if (seconds < Constants.SECS_IN_HOUR) {
             minutes = seconds/Constants.SECS_IN_MIN;
             return Units.toText(minutes, 'min');
         } else if (seconds < Constants.SECS_IN_DAY) {
-            hours = seconds/Constants.SEC_IN_HOUR;
-            minutes = (seconds % Constants.SEC_IN_HOUR) / Constants.SECS_IN_MIN;
+            hours = seconds/Constants.SECS_IN_HOUR;
+            minutes = (seconds % Constants.SECS_IN_HOUR) / Constants.SECS_IN_MIN;
             return Units.toText(hours, 'h')
                 +  ' '
                 +  Units.toText(minutes, 'min');
         } else {
             days = seconds/Constants.SECS_IN_DAY;
-            hours = (seconds % Constants.SECS_IN_DAY) / Constants.SEC_IN_HOUR;
-            minutes = (seconds % Constants.SEC_IN_HOUR) / Constants.SECS_IN_MIN;
+            hours = (seconds % Constants.SECS_IN_DAY) / Constants.SECS_IN_HOUR;
+            minutes = (seconds % Constants.SECS_IN_HOUR) / Constants.SECS_IN_MIN;
             return Units.toText(days, 'd')
                 +  ' '
                 +  Units.toText(hours, 'h')

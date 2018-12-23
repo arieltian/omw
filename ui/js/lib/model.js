@@ -1,11 +1,13 @@
-var Constants = require('../common/constants.js');
-var View = require('../view/view.js');
+var Constants = require('./constants.js');
+var View = require('./view.js');
 
 function toLatLng(places) {
     if (places.length > 0) {
         var place = places[0];
         if (place.geometry) {
             return place.geometry.location;
+        } else {
+            console.log(place);
         }
     }
     // CR atian: log error
