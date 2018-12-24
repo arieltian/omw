@@ -15,7 +15,7 @@ function Controller() {
             containerDiv = Constants.ROUTE_CONTAINER_DIV(i);
             $(containerDiv).click(() => {
                 model.selected = this_i;
-                googleApi.render(model.selections, model.selected);
+                googleApi.render(model.toRender, model.toRenderIndex);
             });
         }
     }
@@ -23,22 +23,26 @@ function Controller() {
     function route() {
         googleApi.unrender();
         model.selected = null;
-        var waypoints = model.omw.map((omw) => {
-            return {
-                location: omw.cachedLocation,
-                stopover: true
+        var promises = model.orderedWaypoints.map(waypoints => {
+            waypoints = waypoints.map(cachedPlace => {
+                return {
+                    location: cachedPlace.location,
+                    stopover: true
+                };
+            });
+            var request = {
+                origin: model.from,
+                destination: model.to,
+                waypoints: waypoints,
+                travelMode: googleApi.MODE_DRIVING,
+                provideRouteAlternatives: true,
+                optimizeWaypoints: true
             };
+            return googleApi.directions(request);
         });
-        var request = {
-            origin: model.from,
-            destination: model.to,
-            waypoints: waypoints,
-            travelMode: googleApi.MODE_DRIVING,
-            provideRouteAlternatives: true,
-            optimizeWaypoints: true
-        };
-        googleApi.directions(request).then((directions) => {
-            model.selections = directions;
+
+        Promise.all(promises).then(selections => {
+            model.selections = selections;
         });
     }
 
@@ -49,7 +53,7 @@ function Controller() {
             if (model.selected == null) {
                 model.selected = 0;
             }
-            omw.addCachedLocations().then(() => {
+            omw.addCachedPlaces().then(() => {
                 route();
             });
         }

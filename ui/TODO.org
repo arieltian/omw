@@ -2,8 +2,30 @@
 * Fix case where omw is changed - done
 * Fix distance and duration string - done
 * Show multiple options for gas
-** Label options by gas station name
+** Store multiple cached locations and names per omw
+** Measure of goodness per cached point
+*** Use driving distance from origin has disposer
+*** Use distance from path as score
 * Error handling
 ** Log developer errors
 ** Display user errors
 * Traffic
+ 
+
+
+
+A
+
+50
+  shell - 4
+  sunoco - 5
+
+100
+  mobile - 1
+  shell - 10
+
+150
+  foo - 2
+  bar - 12
+
+B

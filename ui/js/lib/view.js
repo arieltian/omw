@@ -46,10 +46,9 @@ class Units {
 }
 
 class View {
-    showSelections(selections) {
+    showSelections(routes) {
         var containerDiv, nameDiv, durationDiv, distanceDiv;
         var route, name, duration, distance, durationSecs, distanceMeters;
-        var routes = selections.routes;
         for (var i = 0; i < Constants.MAX_ROUTES; i++) {
             if (routes.length > i) {
                 route = routes[i];

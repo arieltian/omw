@@ -32,7 +32,7 @@ function Omw(model, googleApi) {
     function pointOnPath(milesIn) {
         var milesSoFar = 0;
         var prevLocation;
-        for (var location of model.path) {
+        for (var location of model.path()) {
             if (prevLocation && prevLocation != location) {
                 var distance = DistanceCalculator.milesBetween(prevLocation, location);
                 if (milesSoFar + distance > milesIn) {
@@ -46,15 +46,22 @@ function Omw(model, googleApi) {
         return prevLocation;
     }
 
-    function sortPlacesByDistanceFromOrigin(places) {
+    /**
+     Score places returned for a single omw. If driving distance from origin is
+     greater than milesIn, disqualify place. Score by absolute distance from
+     path.
+     */
+    function scorePlaces(milesIn, places) {
         var deferred = $.Deferred();
+        // Take the first 5 options to limit the number of google api calls
         // CR atian: don't hardcode this length
-        places.splice(3);
+        places.splice(5);
         if (model.from == null) {
-            return Promise.resolve(places);
+            return Promise.resolve([]);
         }
         var promises = places.map((place) => {
             if (place.geometry && place.geometry.location) {
+                var name = place.name;
                 var location = place.geometry.location;
                 var request = {
                     origin: model.from,
@@ -63,26 +70,36 @@ function Omw(model, googleApi) {
                     provideRouteAlternatives: false
                 };
                 return googleApi.directions(request).then((directions) => {
-                    var distance = directions.routes[0].legs[0].distance.value;
-                    place.distance = distance;
-                    return place;
+                    if (directions.routes != null &&
+                        directions.routes[0].legs != null &&
+                        directions.routes[0].legs[0] != null &&
+                        directions.routes[0].legs[0].distance != null &&
+                        directions.routes[0].legs[0].distance.value != null) {
+                        var score = directions.routes[0].legs[0].distance.value * Constants.METERS_TO_MILES;
+                        var placeResult =
+                                { location : location,
+                                  name : name,
+                                  score : score
+                                };
+                        return Promise.resolve(placeResult);
+                    } else {
+                        return Promise.reject('ERROR: directions missing some fields');
+                    }
                 });
             } else {
                 return Promise.reject('ERROR: geometry is null');
             }
         });
 
-        Promise.all(promises).then((places) => {
-            places.sort((p1, p2) => {
-                return p1.distance - p2.distance;
-            });
+        Promise.all(promises).then(places => {
+            places = places.filter(place => place.score <= milesIn);
             deferred.resolve(places);
         });
 
         return deferred.promise();
     }
 
-    function addOneCachedLocation(omw) {
+    function addOneCachedPlace(omw) {
         var type;
         var deferred = $.Deferred();
         var near = pointOnPath(omw.milesIn);
@@ -93,7 +110,7 @@ function Omw(model, googleApi) {
                   fields: [ 'name', 'geometry' ]
                 };
         googleApi.placesNearby(request).then((places) => {
-            return sortPlacesByDistanceFromOrigin(places);
+            return scorePlaces(omw.milesIn, places);
         }).then((places) => {
             deferred.resolve(places);
         });
@@ -101,11 +118,11 @@ function Omw(model, googleApi) {
         return deferred.promise();
     }
 
-    function addCachedLocations() {
+    function addCachedPlaces() {
         var deferred = $.Deferred();
         var promises = model.omw.map((omw, i) => {
             if (omw.cachedLocation == null) {
-                var promise = addOneCachedLocation(omw).then(places => {
+                var promise = addOneCachedPlace(omw).then(places => {
                     model.addOmwInfo(i, places);
                 });
                 return promise;
@@ -122,7 +139,7 @@ function Omw(model, googleApi) {
     }
 
     return Object.freeze({
-        addCachedLocations
+        addCachedPlaces
     });
 }
 

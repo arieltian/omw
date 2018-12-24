@@ -86,8 +86,7 @@ var GoogleApi = require('./google_api.js');
 
 function Controller() {
     let model = new Model();
-    let map = new google.maps.Map(document.getElementById(Constants.MAP_DIV), Constants.MAP_OPTIONS);
-    let googleApi = new GoogleApi(map);
+    let googleApi = new GoogleApi();
     let omw = new Omw(model, googleApi);
 
     function initRouteListeners() {
@@ -97,7 +96,7 @@ function Controller() {
             containerDiv = Constants.ROUTE_CONTAINER_DIV(i);
             $(containerDiv).click(() => {
                 model.selected = this_i;
-                googleApi.render(model.selections, model.selected);
+                googleApi.render(model.toRender, model.toRenderIndex);
             });
         }
     }
@@ -105,23 +104,26 @@ function Controller() {
     function route() {
         googleApi.unrender();
         model.selected = null;
-        var waypoints = model.omw.map((omw) => {
-            return {
-                location: omw.cachedLocation,
-                stopover: true
+        var promises = model.orderedWaypoints.map(waypoints => {
+            waypoints = waypoints.map(cachedPlace => {
+                return {
+                    location: cachedPlace.location,
+                    stopover: true
+                };
+            });
+            var request = {
+                origin: model.from,
+                destination: model.to,
+                waypoints: waypoints,
+                travelMode: googleApi.MODE_DRIVING,
+                provideRouteAlternatives: true,
+                optimizeWaypoints: true
             };
+            return googleApi.directions(request);
         });
-        var request = {
-            origin: model.from,
-            destination: model.to,
-            waypoints: waypoints,
-            travelMode: google.maps.TravelMode.DRIVING,
-            provideRouteAlternatives: true,
-            optimizeWaypoints: true
-        };
-        var promise = googleApi.directions(request);
-        promise.then((results) => {
-            model.selections = results;
+
+        Promise.all(promises).then(selections => {
+            model.selections = selections;
         });
     }
 
@@ -132,23 +134,20 @@ function Controller() {
             if (model.selected == null) {
                 model.selected = 0;
             }
-            omw.addCachedLocations().then(() => {
+            omw.addCachedPlaces().then(() => {
                 route();
             });
         }
     }
 
     function initSearchBoxListeners() {
-        var fromSearchBox = new google.maps.places.SearchBox(document.getElementById(Constants.FROM_SEARCH_BOX));
-        var toSearchBox = new google.maps.places.SearchBox(document.getElementById(Constants.TO_SEARCH_BOX));
-
-        fromSearchBox.addListener('places_changed', () => {
-            model.from = fromSearchBox.getPlaces();
+        googleApi.onFromChanged((from) => {
+            model.from = from;
             routeIfEndpointsExist();
         });
 
-        toSearchBox.addListener('places_changed', () => {
-            model.to = toSearchBox.getPlaces();
+        googleApi.onToChanged((to) => {
+            model.to = to;
             routeIfEndpointsExist();
         });
     }
@@ -161,7 +160,8 @@ function Controller() {
                 var keycode = (event.keyCode ? event.keyCode : event.which);
                 if(keycode == '13') { // We hit Enter
                     var milesIn = event.target.value;
-                    model.setOmw(this_i, Constants.Omw.GAS, milesIn);
+                    var type = Constants.Omw.GAS;
+                    model.setOmw(this_i, type, milesIn);
                     routeIfEndpointsExist();
                 }
             });
@@ -181,11 +181,16 @@ function Controller() {
 module.exports = Controller;
 
 },{"./constants.js":2,"./google_api.js":4,"./model.js":5,"./omw.js":6}],4:[function(require,module,exports){
-function Google (map) {
+var Constants = require('./constants.js');
+
+function Google () {
+    let map = new google.maps.Map(document.getElementById(Constants.MAP_DIV), Constants.MAP_OPTIONS);
     let directionsService = new google.maps.DirectionsService();
     let directionsRenderer = new google.maps.DirectionsRenderer();
     directionsRenderer.setMap(map);
     let placesService = new google.maps.places.PlacesService(map);
+    let fromSearchBox = new google.maps.places.SearchBox(document.getElementById(Constants.FROM_SEARCH_BOX));
+    let toSearchBox = new google.maps.places.SearchBox(document.getElementById(Constants.TO_SEARCH_BOX));
 
     function withStatus(deferred, results, status) {
         if (status == google.maps.DirectionsStatus.OK) {
@@ -223,18 +228,34 @@ function Google (map) {
         directionsRenderer.setRouteIndex(-1);
     }
 
+    function onFromChanged(callback) {
+        fromSearchBox.addListener('places_changed', () => {
+            callback(fromSearchBox.getPlaces());
+        });
+    }
+
+    function onToChanged(callback) {
+        toSearchBox.addListener('places_changed', () => {
+            callback(toSearchBox.getPlaces());
+        });
+    }
+
+    const MODE_DRIVING = google.maps.TravelMode.DRIVING;
+
     return Object.freeze({
         directions,
         placesNearby,
         render,
-        unrender
+        unrender,
+        onFromChanged,
+        onToChanged,
+        MODE_DRIVING
     });
 }
 
 module.exports = Google;
 
-
-},{}],5:[function(require,module,exports){
+},{"./constants.js":2}],5:[function(require,module,exports){
 var Constants = require('./constants.js');
 var View = require('./view.js');
 
@@ -243,8 +264,6 @@ function toLatLng(places) {
         var place = places[0];
         if (place.geometry) {
             return place.geometry.location;
-        } else {
-            console.log(place);
         }
     }
     // CR atian: log error
@@ -260,60 +279,118 @@ function toName(places) {
     return null;
 }
 
+function cartesian(arrs) {
+    var r = [], max = arrs.length-1;
+    function f(arr, i) {
+        for (var j=0, l=arrs[i].length; j<l; j++) {
+            var a = arr.slice(0); // clone arr
+            a.push(arrs[i][j]);
+            if (i==max)
+                r.push(a);
+            else
+                f(a, i+1);
+        }
+    }
+    f([], 0);
+    return r;
+}
+
 class Model {
+    constructor () {
+        /*
+         Private fields:
+         */
+        this.view = new View();
+        this._from = null;
+        this._to = null;
+        this.omw = [];
+        this.orderedWaypoints = [[]];
+        this._selections = [];
+        this._selected = null;
+        this.toRender = [];
+        this.toRenderIndex = null;
+    }
+
     set from (places) {
         this._from = toLatLng(places);
-    }
-    set to (places) {
-        this._to = toLatLng(places);
     }
     get from () {
         return this._from;
     }
+    set to (places) {
+        this._to = toLatLng(places);
+    }
     get to () {
         return this._to;
     }
-
     set selections (result) {
         this._selections = result;
-        this.view.showSelections(result);
+        var routes;
+        if (this.omw.length == 0) {
+            routes = this._selections[0].routes;
+        } else {
+            routes = this._selections.map(selection => selection.routes[0]);
+        }
+        this.view.showSelections(routes);
     }
     get selections () {
         return this._selections;
     }
+    set selected (i) {
+        this._selected = i;
+        if (i == null) {
+            return;
+        }
+        if (this.omw.length == 0) {
+            this.toRender = this._selections[0];
+            this.toRenderIndex = i;
+        } else {
+            this.toRender = this._selections[i];
+            this.toRenderIndex = 0;
+        }
+    }
+    get selected() {
+        return this._selected;
+    }
 
-    get path () {
-        if (this._selections && this.selected != null) {
-            return this._selections.routes[this.selected].overview_path;
+    path() {
+        if (this.toRender &&
+            this.toRenderIndex != null &&
+            this.toRender.routes[this.toRenderIndex]) {
+            return this.toRender.routes[this.toRenderIndex].overview_path;
         } else {
             return [];
         }
     }
 
-    setOmw(index, type, milesIn) {
-        var omw = {
+    setOmw (index, type, milesIn) {
+        this.omw[index] = {
             type: type,
             milesIn: milesIn,
-            cachedName: null,
-            cachedLocation: null
+            cachedPlaces: []
         };
-        this.omw[index] = omw;
+    }
+
+    recalculatePotentialWaypoints() {
+        var cachedPlaces = this.omw.map(omw => omw.cachedPlaces);
+        this.orderedWaypoints = cartesian(cachedPlaces);
+        this.orderedWaypoints.sort((w1, w2) => {
+            var w1_score = w1.reduce((acc, place) => acc + place.score);
+            var w2_score = w2.reduce((acc, place) => acc + place.score);
+            return w1_score - w2_score;
+        });
+        this.orderedWaypoints.splice(Constants.MAX_ROUTES);
     }
 
     addOmwInfo(index, places) {
         if (index < this.omw.length) {
             var omw = this.omw[index];
-            omw.cachedName = toName(places);
-            omw.cachedLocation = toLatLng(places);
+            omw.cachedPlaces = places;
+            this.recalculatePotentialWaypoints();
         } else {
             // CR atian: log dev error
             console.log('cached omw location out of bounds');
         }
-    }
-
-    constructor() {
-        this.omw = [];
-        this.view = new View();
     }
 }
 
@@ -354,7 +431,7 @@ function Omw(model, googleApi) {
     function pointOnPath(milesIn) {
         var milesSoFar = 0;
         var prevLocation;
-        for (var location of model.path) {
+        for (var location of model.path()) {
             if (prevLocation && prevLocation != location) {
                 var distance = DistanceCalculator.milesBetween(prevLocation, location);
                 if (milesSoFar + distance > milesIn) {
@@ -368,15 +445,22 @@ function Omw(model, googleApi) {
         return prevLocation;
     }
 
-    function sortPlacesByDistanceFromOrigin(places) {
+    /**
+     Score places returned for a single omw. If driving distance from origin is
+     greater than milesIn, disqualify place. Score by absolute distance from
+     path.
+     */
+    function scorePlaces(milesIn, places) {
         var deferred = $.Deferred();
+        // Take the first 5 options to limit the number of google api calls
         // CR atian: don't hardcode this length
-        places.splice(3);
+        places.splice(5);
         if (model.from == null) {
-            return Promise.resolve(places);
+            return Promise.resolve([]);
         }
         var promises = places.map((place) => {
             if (place.geometry && place.geometry.location) {
+                var name = place.name;
                 var location = place.geometry.location;
                 var request = {
                     origin: model.from,
@@ -385,26 +469,36 @@ function Omw(model, googleApi) {
                     provideRouteAlternatives: false
                 };
                 return googleApi.directions(request).then((directions) => {
-                    var distance = directions.routes[0].legs[0].distance.value;
-                    place.distance = distance;
-                    return place;
+                    if (directions.routes != null &&
+                        directions.routes[0].legs != null &&
+                        directions.routes[0].legs[0] != null &&
+                        directions.routes[0].legs[0].distance != null &&
+                        directions.routes[0].legs[0].distance.value != null) {
+                        var score = directions.routes[0].legs[0].distance.value * Constants.METERS_TO_MILES;
+                        var placeResult =
+                                { location : location,
+                                  name : name,
+                                  score : score
+                                };
+                        return Promise.resolve(placeResult);
+                    } else {
+                        return Promise.reject('ERROR: directions missing some fields');
+                    }
                 });
             } else {
                 return Promise.reject('ERROR: geometry is null');
             }
         });
 
-        Promise.all(promises).then((places) => {
-            places.sort((p1, p2) => {
-                return p1.distance - p2.distance;
-            });
+        Promise.all(promises).then(places => {
+            places = places.filter(place => place.score <= milesIn);
             deferred.resolve(places);
         });
 
         return deferred.promise();
     }
 
-    function addOneCachedLocation(omw) {
+    function addOneCachedPlace(omw) {
         var type;
         var deferred = $.Deferred();
         var near = pointOnPath(omw.milesIn);
@@ -415,7 +509,7 @@ function Omw(model, googleApi) {
                   fields: [ 'name', 'geometry' ]
                 };
         googleApi.placesNearby(request).then((places) => {
-            return sortPlacesByDistanceFromOrigin(places);
+            return scorePlaces(omw.milesIn, places);
         }).then((places) => {
             deferred.resolve(places);
         });
@@ -423,11 +517,11 @@ function Omw(model, googleApi) {
         return deferred.promise();
     }
 
-    function addCachedLocations() {
+    function addCachedPlaces() {
         var deferred = $.Deferred();
         var promises = model.omw.map((omw, i) => {
             if (omw.cachedLocation == null) {
-                var promise = addOneCachedLocation(omw).then(places => {
+                var promise = addOneCachedPlace(omw).then(places => {
                     model.addOmwInfo(i, places);
                 });
                 return promise;
@@ -444,7 +538,7 @@ function Omw(model, googleApi) {
     }
 
     return Object.freeze({
-        addCachedLocations
+        addCachedPlaces
     });
 }
 
@@ -499,10 +593,9 @@ class Units {
 }
 
 class View {
-    showSelections(selections) {
+    showSelections(routes) {
         var containerDiv, nameDiv, durationDiv, distanceDiv;
         var route, name, duration, distance, durationSecs, distanceMeters;
-        var routes = selections.routes;
         for (var i = 0; i < Constants.MAX_ROUTES; i++) {
             if (routes.length > i) {
                 route = routes[i];
